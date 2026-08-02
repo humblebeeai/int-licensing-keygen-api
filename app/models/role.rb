@@ -170,16 +170,24 @@ class Role < ApplicationRecord
   def name=(...)
     super(...)
 
-    # Reset permissions on role change by using the intersection of our
-    # current role's permissions and the new role's default permisisons.
-    # This helps prevent prevents accidental privilege escalation, e.g.
-    # for user => admin => user.
+    # Reset permissions on role change. Admin role changes are intentionally
+    # promoted to the full admin default set so role=admin is the source of truth
+    # for account administration. Other role changes keep Keygen's conservative
+    # intersection behavior to avoid privilege escalation when moving away from
+    # admin or between lower-privileged roles.
     #
     # Only run when role is persisted, i.e. on updates.
     return unless
       persisted?
 
-    self.permissions = permission_ids & (default_permission_ids << Permission.wildcard_id)
+    return unless
+      name_changed?
+
+    self.permissions = if admin?
+                         default_permission_ids
+                       else
+                         permission_ids & (default_permission_ids << Permission.wildcard_id)
+                       end
   end
 
   ##
