@@ -8,6 +8,7 @@ class Role < ApplicationRecord
   include Dirtyable
 
   USER_ROLES        = %w[user admin developer read_only sales_agent support_agent].freeze
+  ADMIN_PERMISSION_USER_ROLES = %w[admin developer sales_agent support_agent].freeze
   ENVIRONMENT_ROLES = %w[environment].freeze
   PRODUCT_ROLES     = %w[product].freeze
   LICENSE_ROLES     = %w[license].freeze
@@ -103,6 +104,9 @@ class Role < ApplicationRecord
     return if
       ids == [nil]
 
+    ids = default_permission_ids if
+      name_changed? && admin_permission_user_role?
+
     assign_attributes(
       role_permissions_attributes: ids.flatten
                                       .compact
@@ -170,16 +174,24 @@ class Role < ApplicationRecord
   def name=(...)
     super(...)
 
-    # Reset permissions on role change by using the intersection of our
-    # current role's permissions and the new role's default permisisons.
-    # This helps prevent prevents accidental privilege escalation, e.g.
-    # for user => admin => user.
+    # Reset permissions on role change. Admin role changes are intentionally
+    # promoted to the full admin default set so role=admin is the source of truth
+    # for account administration. Other role changes keep Keygen's conservative
+    # intersection behavior to avoid privilege escalation when moving away from
+    # admin or between lower-privileged roles.
     #
     # Only run when role is persisted, i.e. on updates.
     return unless
       persisted?
 
-    self.permissions = permission_ids & (default_permission_ids << Permission.wildcard_id)
+    return unless
+      name_changed?
+
+    self.permissions = if admin_permission_user_role?
+                         default_permission_ids
+                       else
+                         permission_ids & (default_permission_ids << Permission.wildcard_id)
+                       end
   end
 
   ##
@@ -225,6 +237,10 @@ class Role < ApplicationRecord
   def environment? = name.to_sym == :environment
   def product?     = name.to_sym == :product
   def license?     = name.to_sym == :license
+
+  def admin_permission_user_role?
+    resource.is_a?(User) && ADMIN_PERMISSION_USER_ROLES.include?(name)
+  end
 
   def changed_for_autosave?
     super || role_permissions_attributes_assigned?

@@ -37,7 +37,7 @@ describe User, type: :model do
         expect { admin.change_role!(:admin) }.to match_queries(count: 0)
       end
 
-      it 'should intersect permissions when upgraded to admin role' do
+      it 'should sync full permissions when upgraded to admin role' do
         user = create(:user, account:)
         user.change_role!(:admin)
 
@@ -45,7 +45,31 @@ describe User, type: :model do
         actions = admin.permissions.actions
         role    = admin.role
 
-        expect(actions).to match_array User.default_permissions
+        expect(actions).to match_array Permission::ADMIN_PERMISSIONS
+        expect(role.admin?).to be true
+      end
+
+      it 'should sync full permissions when upgraded to admin-equivalent roles' do
+        user = create(:user, account:)
+
+        user.change_role!(:developer)
+
+        developer = user.reload
+
+        expect(developer.permissions.actions).to match_array Permission::ADMIN_PERMISSIONS
+        expect(developer.role.name).to eq 'developer'
+      end
+
+      it 'should ignore explicit permission subsets when upgraded to admin role' do
+        user = create(:user, account:)
+
+        user.update!(role_attributes: { name: :admin, permissions: Permission.where(action: %w[user.read]).ids })
+
+        admin   = user.reload
+        actions = admin.permissions.actions
+        role    = admin.role
+
+        expect(actions).to match_array Permission::ADMIN_PERMISSIONS
         expect(role.admin?).to be true
       end
 
@@ -61,33 +85,33 @@ describe User, type: :model do
         expect(role.user?).to be true
       end
 
-      it 'should intersect custom permissions when changing role' do
+      it 'should reset custom permissions to defaults after changing through admin role' do
         user = create(:user, account:, permissions: %w[license.validate license.read])
         user.change_role!(:admin)
 
-        # oops! change back!
+        # Admin role sync intentionally resets role permissions to role defaults.
         user.change_role!(:user)
 
         actions = user.permissions.actions
         role    = user.role
 
-        expect(actions).to match_array %w[license.validate license.read]
+        expect(actions).to match_array User.default_permissions
         expect(role.user?).to be true
       end
 
-      it 'should maintain wildcard permissions when changing roles' do
+      it 'should reset wildcard permissions to defaults after changing through admin role' do
         user = create(:user, account:, permissions: %w[*])
 
         user.change_role!(:admin)
         admin = user.reload
 
-        expect(admin.permissions.actions).to match_array %w[*]
+        expect(admin.permissions.actions).to match_array Permission::ADMIN_PERMISSIONS
         expect(admin.admin?).to be true
 
         admin.change_role!(:user)
         user = admin.reload
 
-        expect(user.permissions.actions).to match_array %w[*]
+        expect(user.permissions.actions).to match_array User.default_permissions
         expect(user.user?).to be true
       end
 

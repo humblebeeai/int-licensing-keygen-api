@@ -123,4 +123,23 @@ describe Role, type: :model do
       end
     end
   end
+
+  describe 'role permission defaults' do
+    it 'resets permissions to full admin defaults when promoting a persisted user to admin' do
+      resource.role.update!(permissions: Permission.where(action: %w[user.read]).ids)
+
+      resource.role.update!(name: :admin)
+
+      expect(resource.role.reload.permissions.actions).to match_array(Permission::ADMIN_PERMISSIONS)
+    end
+
+    it 'does not keep admin-only permissions when demoting an admin to user' do
+      resource = create(:admin, account:)
+
+      resource.role.update!(name: :user)
+
+      expect(resource.role.reload.permissions.actions).to match_array(resource.default_permissions)
+      expect(resource.role.permissions.actions).to_not include('admin.read')
+    end
+  end
 end
