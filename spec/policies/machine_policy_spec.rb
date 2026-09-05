@@ -557,6 +557,57 @@ describe MachinePolicy, type: :policy do
       end
     end
 
+    # HBAI: a machine file carries the AES model key, so check-out is gated on more than
+    # ownership -- the licence has to still be good and the machine has to still be
+    # heartbeating. Read access is deliberately unaffected; only check-out hands out the key.
+    with_scenarios %i[accessing_its_machine] do
+      with_license_authentication do
+        with_default_permissions do
+          context 'with a suspended license' do
+            let(:license_traits) { [:suspended] }
+
+            denies :check_out
+          end
+
+          context 'with an expired license that revokes access' do
+            # Matches verify_license_for_release!: expiry alone does not deny, the policy
+            # has to revoke on expiry. Set on the licence rather than through
+            # policy_traits, which as_license does not thread into the bearer.
+            let(:license_traits) { %i[expired revoke_access_expiration_strategy] }
+
+            denies :check_out
+          end
+
+          context 'with an expired license that only restricts access' do
+            # RESTRICT_ACCESS keeps what the licence already has, so the weights stay open.
+            let(:license_traits) { %i[expired restrict_access_expiration_strategy] }
+
+            allows :check_out
+          end
+
+          context 'with a dead machine' do
+            let(:machine_traits) { [:dead] }
+
+            denies :check_out
+          end
+
+          context 'with a machine that has never sent a heartbeat' do
+            # NOT_STARTED, not DEAD: the container activates and decrypts back to back,
+            # so requiring a prior heartbeat would deadlock every cold start.
+            let(:machine_traits) { [:idle] }
+
+            allows :check_out
+          end
+
+          context 'with a live machine on a good license' do
+            let(:machine_traits) { [:alive] }
+
+            allows :check_out
+          end
+        end
+      end
+    end
+
     with_scenarios %i[accessing_machines] do
       with_license_authentication do
         with_permissions %w[machine.read] do

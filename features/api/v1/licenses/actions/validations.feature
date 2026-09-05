@@ -8781,6 +8781,41 @@ Feature: License validation actions
     Then the response status should be "403"
     And the response should contain a valid signature header for "test1"
 
+  # HBAI: the model key lives in metadata, and this endpoint takes no authentication, so
+  # metadata must not be serialized here -- otherwise a licence key alone is enough to
+  # decrypt the shipped weights.
+  Scenario: Anonymous validates a license and must not receive its metadata
+    Given the current account is "test1"
+    And the current account has 1 "license" with the following:
+      """
+      { "metadata": { "modelKey": "6dd6cf07ba4d3e4e9e9de2a4e0c96f5c0d4b3d5c9f7a5b1e3c2d4f6a8b0c2d4e" } }
+      """
+    When I send a POST request to "/accounts/test1/licenses/actions/validate-key" with the following:
+      """
+      {
+        "meta": {
+          "key": "$licenses[0].key"
+        }
+      }
+      """
+    Then the response status should be "200"
+    And the response body should contain a "license" without a metadata
+
+  Scenario: Admin reads a license and still receives its metadata
+    Given the current account is "test1"
+    And the current account has 1 "license" with the following:
+      """
+      { "metadata": { "modelKey": "6dd6cf07ba4d3e4e9e9de2a4e0c96f5c0d4b3d5c9f7a5b1e3c2d4f6a8b0c2d4e" } }
+      """
+    And I am an admin of account "test1"
+    And I use an authentication token
+    When I send a GET request to "/accounts/test1/licenses/$0"
+    Then the response status should be "200"
+    And the response body should contain a "license" with the following attributes:
+      """
+      { "metadata": { "modelKey": "6dd6cf07ba4d3e4e9e9de2a4e0c96f5c0d4b3d5c9f7a5b1e3c2d4f6a8b0c2d4e" } }
+      """
+
   # Versions
   Scenario: Anonymous validates a license (default version)
     Given the current account is "test1"
