@@ -61,7 +61,15 @@ class LicenseSerializer < BaseSerializer
       @object.permissions.actions
     end
   end
-  attribute :metadata do
+  # HBAI: withheld from a licence bearer AND from the unauthenticated validate-key
+  # caller (@bearer is nil there -- ValidationsController uses the non-bang
+  # authenticate_with_token). Secrets belong on the machine, which can be gated on
+  # activation; a licence cannot.
+  #
+  # Deliberately no `@context == :checkout` escape, unlike MachineSerializer: a licence
+  # file is encrypted under `license.key` alone (LicenseCheckoutService), so it is not
+  # bound to any machine and would hand the key to whoever holds the key already.
+  attribute :metadata, if: -> { @bearer.present? && !@bearer.has_role?(:license) } do
     @object.metadata&.deep_transform_keys { it.to_s.camelize :lower } or {}
   end
   attribute :created do
