@@ -107,6 +107,14 @@ class MachinePolicy < ApplicationPolicy
     in role: Role(:user) if record.owner == bearer || record.license.owner == bearer || bearer.machines.exists?(record.id)
       !record.license.protected?
     in role: Role(:license) if record.license == bearer
+      # HBAI: a machine file carries the AES model key, so ownership alone is not enough --
+      # the licence must still be good and the machine must still be heartbeating.
+      #
+      # Scoped to the licence bearer only, matching ReleasePolicy: an admin or support
+      # agent must still be able to check out a suspended customer's machine to debug it.
+      verify_license_for_checkout!(license: record.license)
+      verify_machine_liveness!(machine: record)
+
       allow!
     else
       deny!

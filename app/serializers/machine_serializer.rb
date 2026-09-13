@@ -26,7 +26,15 @@ class MachineSerializer < BaseSerializer
   attribute :next_heartbeat do
     @object.next_heartbeat_at
   end
-  attribute :metadata do
+  # HBAI: machine metadata carries the AES model key, so it is withheld from a bare
+  # licence bearer -- otherwise anyone holding a licence key could read it off
+  # GET /machines/{id}. It stays visible inside a machine file, which is already
+  # encrypted under `license.key + machine.fingerprint` (MachineCheckoutService) and
+  # is only issued to a live, activated machine (MachinePolicy#check_out?).
+  #
+  # Keyed on @context rather than the bearer because AbstractCheckoutService builds its
+  # renderer without one, so @bearer is nil during a check-out render.
+  attribute :metadata, if: -> { @context == :checkout || (@bearer.present? && !@bearer.has_role?(:license)) } do
     @object.metadata&.deep_transform_keys { it.to_s.camelize :lower } or {}
   end
   attribute :created do

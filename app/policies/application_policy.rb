@@ -229,6 +229,31 @@ class ApplicationPolicy
       token.can?(actions)
   end
 
+  # HBAI: gate for a machine check-out, whose payload carries the AES model key. Mirrors
+  # the licence half of verify_license_for_release! -- a suspended licence must stop
+  # opening the weights, not merely stop validating.
+  def verify_license_for_checkout!(license:)
+    deny! 'license is suspended' if
+      license.suspended?
+
+    deny! 'license is banned' if
+      license.banned?
+
+    deny! 'license is expired' if
+      license.revoke_access? && license.expired?
+  end
+
+  # HBAI: refuse a machine that has stopped heartbeating, so a host that went away cannot
+  # keep fetching the key.
+  #
+  # Deliberately `dead?` and not `alive?`: a machine that has never pinged is NOT_STARTED
+  # (Machine#heartbeat_status), and the consumer activates and decrypts back to back, so
+  # requiring a prior heartbeat would deadlock every cold start.
+  def verify_machine_liveness!(machine:)
+    deny! 'machine heartbeat is dead' if
+      machine.dead?
+  end
+
   def verify_license_for_release!(license:, release:)
     deny! 'license is suspended' if
       license.suspended?
