@@ -34,7 +34,9 @@ class MachineSerializer < BaseSerializer
   #
   # Keyed on @context rather than the bearer because AbstractCheckoutService builds its
   # renderer without one, so @bearer is nil during a check-out render.
-  attribute :metadata, if: -> { @context == :checkout || (@bearer.present? && !@bearer.has_role?(:license)) } do
+  # Both contexts: MachineCheckoutService narrowed its own, and matching only :checkout
+  # would silently empty the very file that exists to carry this.
+  attribute :metadata, if: -> { @context.in?(%i[checkout machine_checkout]) || (@bearer.present? && !@bearer.has_role?(:license)) } do
     @object.metadata&.deep_transform_keys { it.to_s.camelize :lower } or {}
   end
   attribute :created do

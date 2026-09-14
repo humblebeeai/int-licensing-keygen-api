@@ -42,7 +42,7 @@ class AbstractCheckoutService < BaseService
     raise InvalidAlgorithmError, 'invalid signing algorithm' unless
       signing_algorithm.in?(SIGNING_ALGORITHMS)
 
-    @renderer    = Keygen::JSONAPI::Renderer.new(account:, api_version:, context: :checkout)
+    @renderer    = Keygen::JSONAPI::Renderer.new(account:, api_version:, context: checkout_context)
     @account     = account
     @ttl         = ttl
     @includes    = include
@@ -68,6 +68,9 @@ class AbstractCheckoutService < BaseService
               :ttl,
               :includes,
               :account
+
+  # Serializers key their secret-bearing attributes on this. Subclasses narrow it.
+  def checkout_context = :checkout
 
   def algorithm_parts      = @algorithm_parts      ||= algorithm.split('+', 2)
   def encryption_algorithm = @encryption_algorithm ||= algorithm_parts.first

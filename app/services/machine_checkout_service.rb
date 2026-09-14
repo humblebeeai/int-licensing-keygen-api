@@ -101,4 +101,9 @@ class MachineCheckoutService < AbstractCheckoutService
   attr_reader :environment,
               :machine,
               :license
+
+  # HBAI: narrowed so LicenseSerializer can tell this payload apart from a licence file.
+  # This one is encrypted under license.key + machine.fingerprint (#call), so it may carry
+  # secrets that one -- encrypted under license.key alone -- must not.
+  def checkout_context = :machine_checkout
 end

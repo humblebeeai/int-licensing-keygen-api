@@ -66,10 +66,11 @@ class LicenseSerializer < BaseSerializer
   # authenticate_with_token). Secrets belong on the machine, which can be gated on
   # activation; a licence cannot.
   #
-  # Deliberately no `@context == :checkout` escape, unlike MachineSerializer: a licence
-  # file is encrypted under `license.key` alone (LicenseCheckoutService), so it is not
-  # bound to any machine and would hand the key to whoever holds the key already.
-  attribute :metadata, if: -> { @bearer.present? && !@bearer.has_role?(:license) } do
+  # Open to :machine_checkout, which is encrypted under `license.key + fingerprint` and
+  # gated by MachinePolicy#check_out? -- and is the customer's only route to the key, since
+  # a machine is created empty at startup. Still closed to :checkout, whose licence file is
+  # encrypted under `license.key` alone and whose policy allows a licence bearer outright.
+  attribute :metadata, if: -> { @context == :machine_checkout || (@bearer.present? && !@bearer.has_role?(:license)) } do
     @object.metadata&.deep_transform_keys { it.to_s.camelize :lower } or {}
   end
   attribute :created do
