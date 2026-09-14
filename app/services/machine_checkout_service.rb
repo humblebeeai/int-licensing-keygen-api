@@ -101,4 +101,13 @@ class MachineCheckoutService < AbstractCheckoutService
   attr_reader :environment,
               :machine,
               :license
+
+  # HBAI: narrowed so LicenseSerializer can tell this payload apart from a licence file.
+  # An encrypted machine file is sealed under license.key + machine.fingerprint (#call), so
+  # it may carry secrets a licence file -- sealed under license.key alone -- must not.
+  #
+  # Only when encrypted. `encrypt` defaults to false and is a request parameter, so an
+  # unencrypted file is base64 the caller can simply decode; widening the context for one
+  # would hand the model key to the very licence bearer this gating exists to stop.
+  def checkout_context = encrypted? ? :machine_checkout : :checkout
 end

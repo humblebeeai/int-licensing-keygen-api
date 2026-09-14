@@ -1000,4 +1000,66 @@ describe MachineCheckoutService do
       end
     end
   end
+
+  # HBAI: the AES model key travels in licence metadata, so these pin both halves of how
+  # it is guarded -- it must reach an encrypted machine file, and must not reach one the
+  # caller asked to leave unencrypted.
+  context 'when carrying license metadata' do
+    let(:model_key) { SecureRandom.hex(32) }
+    let(:license)   { create(:license, account: account, metadata: { modelKey: model_key }) }
+
+    # Mirrors AbstractCheckoutService#encrypt: ciphertext.iv.tag, keyed on the licence key
+    # plus the fingerprint, which is what makes the file inert on any other host.
+    def decrypt(enc, secret:)
+      ciphertext, iv, tag = enc.split('.').map { Base64.strict_decode64(it) }
+
+      aes = OpenSSL::Cipher.new('aes-256-gcm')
+      aes.decrypt
+      aes.key      = OpenSSL::Digest::SHA256.digest(secret)
+      aes.iv       = iv
+      aes.auth_tag = tag
+
+      JSON.parse(aes.update(ciphertext) + aes.final)
+    end
+
+    def envelope_for(machine_file)
+      JSON.parse(
+        Base64.decode64(
+          machine_file.certificate
+            .delete_prefix("-----BEGIN MACHINE FILE-----\n")
+            .delete_suffix("-----END MACHINE FILE-----\n"),
+        ),
+      )
+    end
+
+    it 'should be included in an encrypted machine file' do
+      machine_file = MachineCheckoutService.call(account: account, machine: machine, encrypt: true, include: %w[license])
+      data         = decrypt(envelope_for(machine_file).fetch('enc'), secret: license.key + machine.fingerprint)
+
+      expect(data['included']).to include(
+        include('type' => 'licenses', 'attributes' => include('metadata' => include('modelKey' => model_key))),
+      )
+    end
+
+    # `encrypt` defaults to false and is a request parameter, so an unencrypted file is
+    # base64 anyone holding the licence key can decode. Withholding the metadata there is
+    # what keeps the key out of their hands.
+    it 'should be withheld from an unencrypted machine file' do
+      machine_file = MachineCheckoutService.call(account: account, machine: machine, include: %w[license])
+      data         = JSON.parse(Base64.strict_decode64(envelope_for(machine_file).fetch('enc')))
+      licenses     = data['included'].select { it['type'] == 'licenses' }
+
+      expect(licenses).to_not be_empty
+      expect(licenses).to all(satisfy { |it| !it['attributes'].key?('metadata') })
+    end
+
+    it "should not displace the machine's own metadata" do
+      machine.update!(metadata: { modelKey: model_key })
+
+      machine_file = MachineCheckoutService.call(account: account, machine: machine, encrypt: true)
+      data         = decrypt(envelope_for(machine_file).fetch('enc'), secret: license.key + machine.fingerprint)
+
+      expect(data['data']['attributes']).to include('metadata' => include('modelKey' => model_key))
+    end
+  end
 end

@@ -996,4 +996,32 @@ describe LicenseCheckoutService do
       end
     end
   end
+
+  # HBAI: the negative half of the machine-file gating. A licence file is sealed under
+  # `license.key` alone, and LicensePolicy#check_out? allows a licence bearer outright, so
+  # metadata here would hand the model key to whoever already holds the key.
+  context 'when the license carries metadata' do
+    let(:model_key) { SecureRandom.hex(32) }
+    let(:license)   { create(:license, account: account, metadata: { modelKey: model_key }) }
+
+    it 'should be withheld from the license file' do
+      license_file = LicenseCheckoutService.call(account: account, license: license, encrypt: true)
+
+      ciphertext, iv, tag = license_file.certificate
+        .delete_prefix("-----BEGIN LICENSE FILE-----\n")
+        .delete_suffix("-----END LICENSE FILE-----\n")
+        .then { JSON.parse(Base64.decode64(it)).fetch('enc') }
+        .split('.').map { Base64.strict_decode64(it) }
+
+      aes = OpenSSL::Cipher.new('aes-256-gcm')
+      aes.decrypt
+      aes.key      = OpenSSL::Digest::SHA256.digest(license.key)
+      aes.iv       = iv
+      aes.auth_tag = tag
+
+      data = JSON.parse(aes.update(ciphertext) + aes.final)
+
+      expect(data['data']['attributes']).to_not have_key('metadata')
+    end
+  end
 end
