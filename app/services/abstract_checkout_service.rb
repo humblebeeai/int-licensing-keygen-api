@@ -18,12 +18,35 @@ class AbstractCheckoutService < BaseService
     ecdsa-p256
   ].freeze
 
-  def initialize(account:, encrypt: false, sign: true, algorithm: nil, ttl: 1.month, include: [], api_version: nil)
+  # HBAI: a customer must not choose how long their own file lasts. Upstream lets any
+  # bearer allowed to check out pick the TTL, with no upper bound and `null` meaning
+  # "never expires", so a licence key could mint a file that outlives every limit we set.
+  # Staff, products and environments keep full control; every other bearer -- a licence
+  # or a user -- is capped. Our SDK checks out online with a licence key only to read the
+  # model key and never looks at the file's expiry, so an hour costs it nothing. Long-lived
+  # offline files come from the dashboard or the renew service, which hold product or
+  # admin tokens and set the period themselves.
+  UNCAPPED_TTL_ROLES = %i[admin developer sales_agent support_agent product environment].freeze
+  CUSTOMER_MAX_TTL   = 1.hour.to_i
+
+  def self.max_ttl_for(bearer)
+    return nil if
+      bearer.present? && bearer.has_role?(*UNCAPPED_TTL_ROLES)
+
+    CUSTOMER_MAX_TTL
+  end
+
+  def initialize(account:, encrypt: false, sign: true, algorithm: nil, ttl: 1.month, max_ttl: nil, include: [], api_version: nil)
     raise InvalidAccountError, 'account must be present' unless
       account.present?
 
     raise InvalidTTLError, 'must be greater than or equal to 3600 (1 hour)' if
       ttl.present? && ttl < 1.hour
+
+    # HBAI: after the minimum check, so a request below an hour is still refused rather
+    # than quietly raised. `nil` is "never expires" and is capped like any long TTL.
+    ttl = max_ttl if
+      max_ttl.present? && (ttl.nil? || ttl > max_ttl)
 
     raise InvalidAlgorithmError, 'algorithm must be present' if
       algorithm.present? && algorithm.blank?

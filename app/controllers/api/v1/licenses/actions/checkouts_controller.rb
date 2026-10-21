@@ -113,6 +113,8 @@ module Api::V1::Licenses::Actions
         api_version: current_api_version,
         environment: current_environment,
         account: current_account,
+        # HBAI: caps the TTL for licence and user bearers. See AbstractCheckoutService.
+        max_ttl: LicenseCheckoutService.max_ttl_for(current_bearer),
         license:,
         **kwargs,
       )

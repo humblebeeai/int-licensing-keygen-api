@@ -2282,3 +2282,108 @@ Feature: Machine checkout actions
     And sidekiq should have 0 "webhook" jobs
     And sidekiq should have 0 "event-log" jobs
     And sidekiq should have 1 "request-log" job
+
+  # HBAI: a customer must not choose how long their own file lasts. A licence or a user is
+  # capped at an hour whatever it asks for, "never expires" included; staff and products are
+  # not. Our SDK's online check-out sends a year in the body, so that shape is pinned too.
+  Scenario: License performs a machine checkout with a nil TTL using its key (POST)
+    Given the current account is "test1"
+    And the current account has 1 "webhook-endpoint"
+    And the current account has 1 "policy" with the following:
+      """
+      { "authenticationStrategy": "LICENSE" }
+      """
+    And the current account has 1 "license" for the last "policy"
+    And the current account has 1 "machine" for the last "license"
+    And I am a license of account "test1"
+    And I authenticate with my license key
+    When I send a POST request to "/accounts/test1/machines/$0/actions/check-out" with the following:
+      """
+      { "meta": { "ttl": null } }
+      """
+    Then the response status should be "200"
+    And the response body should be a "machine-file" with the following encoded certificate data:
+      """
+      { "meta": { "ttl": 3600 } }
+      """
+
+  Scenario: License performs a machine checkout with an empty TTL (GET)
+    Given the current account is "test1"
+    And the current account has 1 "license"
+    And the current account has 1 "machine" for the last "license"
+    And I am a license of account "test1"
+    And I use an authentication token
+    When I send a GET request to "/accounts/test1/machines/$0/actions/check-out?ttl="
+    Then the response status should be "200"
+    And the response should be a "MACHINE" certificate with the following encoded data:
+      """
+      { "meta": { "ttl": 3600 } }
+      """
+
+  Scenario: License performs a machine checkout with a year-long TTL in the body, as the SDK does (POST)
+    Given the current account is "test1"
+    And the current account has 1 "policy" with the following:
+      """
+      { "authenticationStrategy": "LICENSE" }
+      """
+    And the current account has 1 "license" for the last "policy"
+    And the current account has 1 "machine" for the last "license"
+    And I am a license of account "test1"
+    And I authenticate with my license key
+    When I send a POST request to "/accounts/test1/machines/$0/actions/check-out" with the following:
+      """
+      { "meta": { "ttl": 31536000 } }
+      """
+    Then the response status should be "200"
+    And the response body should be a "machine-file" with the following encoded certificate data:
+      """
+      { "meta": { "ttl": 3600 } }
+      """
+
+  Scenario: License performs a machine checkout without a TTL (POST)
+    Given the current account is "test1"
+    And the current account has 1 "license"
+    And the current account has 1 "machine" for the last "license"
+    And I am a license of account "test1"
+    And I use an authentication token
+    When I send a POST request to "/accounts/test1/machines/$0/actions/check-out"
+    Then the response status should be "200"
+    And the response body should be a "machine-file" with the following encoded certificate data:
+      """
+      { "meta": { "ttl": 3600 } }
+      """
+
+  Scenario: User performs a machine checkout with a nil TTL (POST)
+    Given the current account is "test1"
+    And the current account has 1 "user"
+    And the current account has 1 "license" for the last "user" as "owner"
+    And the current account has 1 "machine" for the last "license"
+    And I am a user of account "test1"
+    And I use an authentication token
+    When I send a POST request to "/accounts/test1/machines/$0/actions/check-out" with the following:
+      """
+      { "meta": { "ttl": null } }
+      """
+    Then the response status should be "200"
+    And the response body should be a "machine-file" with the following encoded certificate data:
+      """
+      { "meta": { "ttl": 3600 } }
+      """
+
+  Scenario: Product performs a machine checkout with a nil TTL (POST)
+    Given the current account is "test1"
+    And the current account has 1 "product"
+    And the current account has 1 "policy" for the last "product"
+    And the current account has 1 "license" for the last "policy"
+    And the current account has 1 "machine" for the last "license"
+    And I am a product of account "test1"
+    And I use an authentication token
+    When I send a POST request to "/accounts/test1/machines/$0/actions/check-out" with the following:
+      """
+      { "meta": { "ttl": null } }
+      """
+    Then the response status should be "200"
+    And the response body should be a "machine-file" with the following encoded certificate data:
+      """
+      { "meta": { "expiry": null, "ttl": null } }
+      """
