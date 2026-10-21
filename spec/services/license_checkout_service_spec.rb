@@ -1024,4 +1024,20 @@ describe LicenseCheckoutService do
       expect(data['data']['attributes']).to_not have_key('metadata')
     end
   end
+
+  # HBAI: the licence file takes the same cap as the machine file. LicensePolicy#check_out?
+  # lets a licence check itself out with no other gate, so it must not set its own TTL.
+  context 'when the TTL is capped' do
+    it 'should cap a file that would never expire' do
+      freeze_time do
+        license_file = LicenseCheckoutService.call(account:, license:, ttl: nil, max_ttl: 1.hour.to_i)
+
+        payload = license_file.certificate.delete_prefix("-----BEGIN LICENSE FILE-----\n")
+                                          .delete_suffix("-----END LICENSE FILE-----\n")
+        meta    = JSON.parse(Base64.strict_decode64(JSON.parse(Base64.decode64(payload)).fetch('enc'))).fetch('meta')
+
+        expect(meta).to include('expiry' => 1.hour.from_now, 'ttl' => 3600)
+      end
+    end
+  end
 end

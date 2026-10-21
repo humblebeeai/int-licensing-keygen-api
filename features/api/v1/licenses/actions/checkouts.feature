@@ -2199,3 +2199,23 @@ Feature: License checkout actions
     And sidekiq should have 0 "webhook" jobs
     And sidekiq should have 0 "event-log" jobs
     And sidekiq should have 1 "request-log" job
+
+  # HBAI: the licence file takes the same cap as the machine file.
+  Scenario: License performs a license checkout with a nil TTL using its key (POST)
+    Given the current account is "test1"
+    And the current account has 1 "policy" with the following:
+      """
+      { "authenticationStrategy": "LICENSE" }
+      """
+    And the current account has 1 "license" for the last "policy"
+    And I am a license of account "test1"
+    And I authenticate with my license key
+    When I send a POST request to "/accounts/test1/licenses/$0/actions/check-out" with the following:
+      """
+      { "meta": { "ttl": null } }
+      """
+    Then the response status should be "200"
+    And the response body should be a "license-file" with the following encoded certificate data:
+      """
+      { "meta": { "ttl": 3600 } }
+      """

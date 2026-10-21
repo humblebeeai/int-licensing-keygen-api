@@ -1062,4 +1062,83 @@ describe MachineCheckoutService do
       expect(data['data']['attributes']).to include('metadata' => include('modelKey' => model_key))
     end
   end
+
+  # HBAI: a customer must not choose how long their own file lasts. The controllers pass
+  # `max_ttl` for licence and user bearers; these pin what the cap does to each TTL a
+  # caller can ask for, including "never expires".
+  context 'when the TTL is capped' do
+    def meta_for(machine_file)
+      payload = machine_file.certificate.delete_prefix("-----BEGIN MACHINE FILE-----\n")
+                                        .delete_suffix("-----END MACHINE FILE-----\n")
+
+      JSON.parse(Base64.strict_decode64(JSON.parse(Base64.decode64(payload)).fetch('enc'))).fetch('meta')
+    end
+
+    it 'should cap a file that would never expire' do
+      freeze_time do
+        machine_file = MachineCheckoutService.call(account:, machine:, ttl: nil, max_ttl: 1.hour.to_i)
+
+        expect(meta_for(machine_file)).to include('expiry' => 1.hour.from_now, 'ttl' => 3600)
+      end
+    end
+
+    it 'should cap a TTL longer than the cap' do
+      freeze_time do
+        machine_file = MachineCheckoutService.call(account:, machine:, ttl: 100.years.to_i, max_ttl: 1.hour.to_i)
+
+        expect(meta_for(machine_file)).to include('expiry' => 1.hour.from_now, 'ttl' => 3600)
+      end
+    end
+
+    it 'should cap the default TTL' do
+      freeze_time do
+        machine_file = MachineCheckoutService.call(account:, machine:, max_ttl: 1.hour.to_i)
+
+        expect(meta_for(machine_file)).to include('expiry' => 1.hour.from_now, 'ttl' => 3600)
+      end
+    end
+
+    it 'should still refuse a TTL below an hour' do
+      expect { MachineCheckoutService.call(account:, machine:, ttl: 1.minute.to_i, max_ttl: 1.hour.to_i) }
+        .to raise_error MachineCheckoutService::InvalidTTLError
+    end
+
+    it 'should leave the TTL alone without a cap' do
+      freeze_time do
+        machine_file = MachineCheckoutService.call(account:, machine:, ttl: nil, max_ttl: nil)
+
+        expect(meta_for(machine_file)).to include('expiry' => nil, 'ttl' => nil)
+      end
+    end
+  end
+
+  # HBAI: who the cap applies to. Staff, products and environments set TTLs for customers;
+  # a licence or a user is the customer.
+  describe '.max_ttl_for' do
+    it 'should cap a license' do
+      expect(MachineCheckoutService.max_ttl_for(license)).to eq 1.hour.to_i
+    end
+
+    it 'should cap a user' do
+      expect(MachineCheckoutService.max_ttl_for(create(:user, account:))).to eq 1.hour.to_i
+    end
+
+    it 'should cap a missing bearer' do
+      expect(MachineCheckoutService.max_ttl_for(nil)).to eq 1.hour.to_i
+    end
+
+    %i[admin developer sales_agent support_agent].each do |role|
+      it "should not cap #{role.to_s.humanize(capitalize: false)}s" do
+        expect(MachineCheckoutService.max_ttl_for(create(role, account:))).to be_nil
+      end
+    end
+
+    it 'should not cap a product' do
+      expect(MachineCheckoutService.max_ttl_for(create(:product, account:))).to be_nil
+    end
+
+    it 'should not cap an environment' do
+      expect(MachineCheckoutService.max_ttl_for(create(:environment, account:))).to be_nil
+    end
+  end
 end
