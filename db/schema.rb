@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_07_121901) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_28_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -219,6 +219,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_07_121901) do
     t.index ["entitlement_id"], name: "index_license_entitlements_on_entitlement_id"
     t.index ["environment_id"], name: "index_license_entitlements_on_environment_id"
     t.index ["license_id"], name: "index_license_entitlements_on_license_id"
+  end
+
+  create_table "license_usage_batches", id: :uuid, default: -> { "uuid_generate_v4()" }, force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.string "batch_id", null: false
+    t.datetime "created_at", null: false
+    t.bigint "images", default: 0, null: false
+    t.uuid "license_id", null: false
+    t.index ["account_id", "created_at"], name: "index_license_usage_batches_on_account_id_and_created_at"
+    t.index ["license_id", "batch_id"], name: "index_license_usage_batches_on_license_id_and_batch_id", unique: true
+  end
+
+  create_table "license_usage_days", id: :uuid, default: -> { "uuid_generate_v4()" }, force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.datetime "created_at", null: false
+    t.date "day", null: false
+    t.uuid "environment_id"
+    t.bigint "failed", default: 0, null: false
+    t.bigint "images", default: 0, null: false
+    t.uuid "license_id", null: false
+    t.string "model_id", null: false
+    t.bigint "requests", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id", "day"], name: "index_license_usage_days_on_account_id_and_day"
+    t.index ["environment_id"], name: "index_license_usage_days_on_environment_id"
+    t.index ["license_id", "model_id", "day"], name: "index_license_usage_days_on_license_id_and_model_id_and_day", unique: true
   end
 
   create_table "license_users", id: :uuid, default: -> { "uuid_generate_v4()" }, force: :cascade do |t|
