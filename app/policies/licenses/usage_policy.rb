@@ -22,6 +22,21 @@ module Licenses
       end
     end
 
+    # HBAI: the daily usage report (NICHE-427). Billing data, so not the licence itself.
+    def show?
+      verify_permissions!('license.read')
+      verify_environment!
+
+      case bearer
+      in role: Role(:admin | :developer | :sales_agent | :support_agent | :read_only | :environment)
+        allow!
+      in role: Role(:product) if license.product == bearer
+        allow!
+      else
+        deny!
+      end
+    end
+
     def decrement?
       verify_permissions!('license.usage.decrement')
       verify_environment!

@@ -261,6 +261,9 @@ Rails.application.routes.draw do
             post :increment_usage, path: 'increment-usage', to: 'uses#increment'
             post :decrement_usage, path: 'decrement-usage', to: 'uses#decrement'
             post :reset_usage,     path: 'reset-usage',     to: 'uses#reset'
+            # HBAI: per-model, per-day usage for billing (NICHE-427)
+            post :record_usage,    path: 'record-usage',    to: 'usage_records#create'
+            get :usage,                                     to: 'usage_records#show'
             post :check_out,       path: 'check-out',       to: 'checkouts#create'
             get :check_out,        path: 'check-out',       to: 'checkouts#show', defaults: { format: :binary }
           end
