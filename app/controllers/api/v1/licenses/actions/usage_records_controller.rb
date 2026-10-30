@@ -84,7 +84,7 @@ module Api::V1::Licenses::Actions
       days = days.where(model_id: usage_record_query[:model]) if
         usage_record_query[:model].present?
 
-      rows = days.order(:day, :model_id).map do |row|
+      rows = days.reorder(:day, :model_id).map do |row|
         { day: row.day.iso8601, modelId: row.model_id, images: row.images, requests: row.requests, failed: row.failed }
       end
 

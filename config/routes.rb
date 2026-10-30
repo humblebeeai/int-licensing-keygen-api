@@ -402,6 +402,9 @@ Rails.application.routes.draw do
         end
       end
 
+      # HBAI: daily usage of every licence, for billing (NICHE-427)
+      get 'license-usage', to: 'license_usage#index'
+
       ee do
         resources :request_logs, path: 'request-logs', only: %i[index show]
         resources :event_logs, path: 'event-logs', only: %i[index show]
