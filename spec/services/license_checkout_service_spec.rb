@@ -1025,6 +1025,94 @@ describe LicenseCheckoutService do
     end
   end
 
+  # HBAI: the opt-in half. An unbound licence file carries the model key so one file runs
+  # on many offline servers; the controller decides `unbound`, never the request.
+  context 'when the license file is unbound' do
+    let(:model_key) { SecureRandom.hex(32) }
+    let(:license)   { create(:license, account: account, expiry: 30.days.from_now, metadata: { modelKey: model_key }) }
+
+    def decrypted(license_file)
+      ciphertext, iv, tag = license_file.certificate
+        .delete_prefix("-----BEGIN LICENSE FILE-----\n")
+        .delete_suffix("-----END LICENSE FILE-----\n")
+        .then { JSON.parse(Base64.decode64(it)).fetch('enc') }
+        .split('.').map { Base64.strict_decode64(it) }
+
+      aes = OpenSSL::Cipher.new('aes-256-gcm')
+      aes.decrypt
+      aes.key      = OpenSSL::Digest::SHA256.digest(license.key)
+      aes.iv       = iv
+      aes.auth_tag = tag
+
+      JSON.parse(aes.update(ciphertext) + aes.final)
+    end
+
+    it 'should carry the metadata when encrypted' do
+      license_file = LicenseCheckoutService.call(account:, license:, encrypt: true, unbound: true)
+
+      expect(decrypted(license_file)['data']['attributes']['metadata']).to include('modelKey' => model_key)
+    end
+
+    it 'should withhold the metadata when not encrypted' do
+      license_file = LicenseCheckoutService.call(account:, license:, unbound: true)
+
+      payload = license_file.certificate.delete_prefix("-----BEGIN LICENSE FILE-----\n")
+                                        .delete_suffix("-----END LICENSE FILE-----\n")
+      data    = JSON.parse(Base64.strict_decode64(JSON.parse(Base64.decode64(payload)).fetch('enc')))
+
+      expect(data['data']['attributes']).to_not have_key('metadata')
+    end
+
+    it 'should withhold the metadata when not unbound' do
+      license_file = LicenseCheckoutService.call(account:, license:, encrypt: true)
+
+      expect(decrypted(license_file)['data']['attributes']).to_not have_key('metadata')
+    end
+
+    it 'should refuse a license without an expiry' do
+      license.update!(expiry: nil)
+
+      expect { LicenseCheckoutService.call(account:, license:, encrypt: true, unbound: true) }.to raise_error(
+        LicenseCheckoutService::UnboundWithoutExpiryError,
+      )
+    end
+
+    it 'should refuse a license that has ended' do
+      license.update!(expiry: 1.day.ago)
+
+      expect { LicenseCheckoutService.call(account:, license:, encrypt: true, unbound: true) }.to raise_error(
+        LicenseCheckoutService::UnboundWithoutExpiryError,
+      )
+    end
+
+    it 'should not outlive the license, whatever the TTL asked for' do
+      freeze_time do
+        license.update!(expiry: 10.days.from_now)
+
+        [nil, 1.year.to_i].each do |ttl|
+          license_file = LicenseCheckoutService.call(account:, license:, encrypt: true, unbound: true, ttl:)
+
+          expect(license_file.expires_at).to eq 10.days.from_now
+          expect(decrypted(license_file)['meta']).to include('ttl' => 10.days.to_i)
+        end
+      end
+    end
+
+    it 'should keep a shorter TTL' do
+      freeze_time do
+        license_file = LicenseCheckoutService.call(account:, license:, encrypt: true, unbound: true, ttl: 1.day.to_i)
+
+        expect(license_file.expires_at).to eq 1.day.from_now
+      end
+    end
+
+    it 'should not refuse an unencrypted file, which carries no key' do
+      license.update!(expiry: nil)
+
+      expect { LicenseCheckoutService.call(account:, license:, unbound: true) }.to_not raise_error
+    end
+  end
+
   # HBAI: the licence file takes the same cap as the machine file. LicensePolicy#check_out?
   # lets a licence check itself out with no other gate, so it must not set its own TTL.
   context 'when the TTL is capped' do

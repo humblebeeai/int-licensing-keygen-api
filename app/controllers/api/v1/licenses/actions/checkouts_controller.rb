@@ -41,6 +41,8 @@ module Api::V1::Licenses::Actions
       render_bad_request detail: e.message, code: :CHECKOUT_INCLUDE_INVALID, source: { parameter: :include }
     rescue LicenseCheckoutService::InvalidTTLError => e
       render_bad_request detail: e.message, code: :CHECKOUT_TTL_INVALID, source: { parameter: :ttl }
+    rescue LicenseCheckoutService::UnboundWithoutExpiryError => e
+      render_unprocessable_entity detail: e.message, code: :CHECKOUT_EXPIRY_REQUIRED
     rescue LicenseCheckoutService::InvalidAlgorithmError => e
       render_unprocessable_entity detail: e.message
     end
@@ -87,6 +89,8 @@ module Api::V1::Licenses::Actions
       render_bad_request detail: e.message, code: :CHECKOUT_INCLUDE_INVALID, source: { parameter: :include }
     rescue LicenseCheckoutService::InvalidTTLError => e
       render_bad_request detail: e.message, code: :CHECKOUT_TTL_INVALID, source: { parameter: :ttl }
+    rescue LicenseCheckoutService::UnboundWithoutExpiryError => e
+      render_unprocessable_entity detail: e.message, code: :CHECKOUT_EXPIRY_REQUIRED
     rescue LicenseCheckoutService::InvalidAlgorithmError => e
       render_unprocessable_entity detail: e.message
     end
@@ -115,6 +119,9 @@ module Api::V1::Licenses::Actions
         account: current_account,
         # HBAI: caps the TTL for licence and user bearers. See AbstractCheckoutService.
         max_ttl: LicenseCheckoutService.max_ttl_for(current_bearer),
+        # HBAI: never from a request parameter. The policy opts in; only an admin can
+        # issue it, so a customer holding the licence key alone cannot fetch the model key.
+        unbound: license.policy&.unbound_licence_file? && current_bearer&.has_role?(:admin) || false,
         license:,
         **kwargs,
       )
