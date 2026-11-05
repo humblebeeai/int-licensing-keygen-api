@@ -70,7 +70,11 @@ class LicenseSerializer < BaseSerializer
   # gated by MachinePolicy#check_out? -- and is the customer's only route to the key, since
   # a machine is created empty at startup. Still closed to :checkout, whose licence file is
   # encrypted under `license.key` alone and whose policy allows a licence bearer outright.
-  attribute :metadata, if: -> { @context == :machine_checkout || (@bearer.present? && !@bearer.has_role?(:license)) } do
+  #
+  # Also open to :unbound_license_checkout: an encrypted licence file an admin issued for a
+  # licence whose policy opted in (LicenseCheckoutService). Sealed under license.key alone
+  # on purpose, so one file runs on many servers.
+  attribute :metadata, if: -> { @context.in?(%i[machine_checkout unbound_license_checkout]) || (@bearer.present? && !@bearer.has_role?(:license)) } do
     @object.metadata&.deep_transform_keys { it.to_s.camelize :lower } or {}
   end
   attribute :created do

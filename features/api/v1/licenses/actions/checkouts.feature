@@ -2219,3 +2219,134 @@ Feature: License checkout actions
       """
       { "meta": { "ttl": 3600 } }
       """
+
+  # HBAI: unbound licence files. The policy opts in and only an admin can issue one, so a
+  # customer holding the licence key cannot fetch the model key.
+  Scenario: Admin checks out an unbound license file
+    Given the current account is "test1"
+    And the current account has 1 "policy" with the following:
+      """
+      { "authenticationStrategy": "LICENSE", "metadata": { "unboundLicenceFile": true } }
+      """
+    And the current account has 1 "license" for the last "policy" with the following:
+      """
+      { "expiry": "2099-01-01T00:00:00.000Z", "metadata": { "modelKey": "secret-model-key" } }
+      """
+    And I am an admin of account "test1"
+    And I use an authentication token
+    When I send a POST request to "/accounts/test1/licenses/$0/actions/check-out" with the following:
+      """
+      { "meta": { "encrypt": true } }
+      """
+    Then the response status should be "200"
+    And the license file should carry the license metadata
+
+  Scenario: Admin checks out an unencrypted license file for an unbound policy
+    Given the current account is "test1"
+    And the current account has 1 "policy" with the following:
+      """
+      { "authenticationStrategy": "LICENSE", "metadata": { "unboundLicenceFile": true } }
+      """
+    And the current account has 1 "license" for the last "policy" with the following:
+      """
+      { "expiry": "2099-01-01T00:00:00.000Z", "metadata": { "modelKey": "secret-model-key" } }
+      """
+    And I am an admin of account "test1"
+    And I use an authentication token
+    When I send a POST request to "/accounts/test1/licenses/$0/actions/check-out"
+    Then the response status should be "200"
+    And the license file should not carry the license metadata
+
+  Scenario: Admin checks out a license file for a policy that did not opt in
+    Given the current account is "test1"
+    And the current account has 1 "policy"
+    And the current account has 1 "license" for the last "policy" with the following:
+      """
+      { "expiry": "2099-01-01T00:00:00.000Z", "metadata": { "modelKey": "secret-model-key" } }
+      """
+    And I am an admin of account "test1"
+    And I use an authentication token
+    When I send a POST request to "/accounts/test1/licenses/$0/actions/check-out" with the following:
+      """
+      { "meta": { "encrypt": true } }
+      """
+    Then the response status should be "200"
+    And the license file should not carry the license metadata
+
+  Scenario: Admin checks out an unbound license file for a license without an expiry
+    Given the current account is "test1"
+    And the current account has 1 "policy" with the following:
+      """
+      { "authenticationStrategy": "LICENSE", "duration": null, "metadata": { "unboundLicenceFile": true } }
+      """
+    And the current account has 1 "license" for the last "policy" with the following:
+      """
+      { "expiry": null, "metadata": { "modelKey": "secret-model-key" } }
+      """
+    And I am an admin of account "test1"
+    And I use an authentication token
+    When I send a POST request to "/accounts/test1/licenses/$0/actions/check-out" with the following:
+      """
+      { "meta": { "encrypt": true } }
+      """
+    Then the response status should be "422"
+
+  Scenario: License checks out an unbound license file using its key
+    Given the current account is "test1"
+    And the current account has 1 "policy" with the following:
+      """
+      { "authenticationStrategy": "LICENSE", "metadata": { "unboundLicenceFile": true } }
+      """
+    And the current account has 1 "license" for the last "policy" with the following:
+      """
+      { "expiry": "2099-01-01T00:00:00.000Z", "metadata": { "modelKey": "secret-model-key" } }
+      """
+    And I am a license of account "test1"
+    And I authenticate with my license key
+    When I send a POST request to "/accounts/test1/licenses/$0/actions/check-out" with the following:
+      """
+      { "meta": { "encrypt": true } }
+      """
+    Then the response status should be "200"
+    And the license file should not carry the license metadata
+
+  Scenario: Product checks out an unbound license file
+    Given the current account is "test1"
+    And the current account has 1 "product"
+    And the current account has 1 "policy" for the last "product" with the following:
+      """
+      { "authenticationStrategy": "LICENSE", "metadata": { "unboundLicenceFile": true } }
+      """
+    And the current account has 1 "license" for the last "policy" with the following:
+      """
+      { "expiry": "2099-01-01T00:00:00.000Z", "metadata": { "modelKey": "secret-model-key" } }
+      """
+    And I am a product of account "test1"
+    And I use an authentication token
+    When I send a POST request to "/accounts/test1/licenses/$0/actions/check-out" with the following:
+      """
+      { "meta": { "encrypt": true } }
+      """
+    Then the response status should be "200"
+    And the license file should not carry the license metadata
+
+  Scenario: User checks out an unbound license file they own
+    Given the current account is "test1"
+    And the current account has 1 "user"
+    And the current account has 1 "policy" with the following:
+      """
+      { "authenticationStrategy": "LICENSE", "metadata": { "unboundLicenceFile": true } }
+      """
+    And the current account has 1 "license" for the last "policy" and the last "user" as "owner"
+    And the last "license" for account "test1" has the following attributes:
+      """
+      { "expiry": "2099-01-01T00:00:00.000Z", "metadata": { "modelKey": "secret-model-key" } }
+      """
+    And I am a user of account "test1"
+    And I use an authentication token
+    When I send a POST request to "/accounts/test1/licenses/$0/actions/check-out" with the following:
+      """
+      { "meta": { "encrypt": true } }
+      """
+    Then the response status should be "200"
+    And the license file should not carry the license metadata

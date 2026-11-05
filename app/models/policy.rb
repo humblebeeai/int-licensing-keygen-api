@@ -432,6 +432,11 @@ class Policy < ApplicationRecord
     scheme == 'LEGACY_ENCRYPT'
   end
 
+  # HBAI: licences under this policy may be checked out as one unbound licence file that
+  # carries the model key and runs on any number of offline servers. Set in the policy's
+  # metadata (`unboundLicenceFile: true`), which only staff and products can change.
+  def unbound_licence_file? = metadata&.dig('unbound_licence_file').to_s == 'true'
+
   def protected?
     protected
   end

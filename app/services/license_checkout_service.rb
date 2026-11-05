@@ -3,6 +3,7 @@
 class LicenseCheckoutService < AbstractCheckoutService
   class InvalidIncludeError < StandardError; end
   class InvalidLicenseError < StandardError; end
+  class UnboundWithoutExpiryError < StandardError; end
 
   ALLOWED_INCLUDES = %w[
     entitlements
@@ -14,9 +15,15 @@ class LicenseCheckoutService < AbstractCheckoutService
     users
   ].freeze
 
-  def initialize(license:, environment: nil, include: [], **kwargs)
+  # HBAI: `unbound` lets an encrypted licence file carry the licence's metadata, model
+  # key included. Only the controller sets it, and only for an admin checking out a
+  # licence whose policy opted in (see Policy#unbound_licence_file?). Set before `super`,
+  # which builds the renderer from #checkout_context.
+  def initialize(license:, environment: nil, include: [], unbound: false, **kwargs)
     raise InvalidLicenseError, 'license must be present' unless
       license.present?
+
+    @unbound = unbound
 
     raise InvalidIncludeError, 'invalid includes' if
       (include - ALLOWED_INCLUDES).any?
@@ -43,6 +50,19 @@ class LicenseCheckoutService < AbstractCheckoutService
            end
 
     super(sign:, include:, **kwargs)
+
+    # HBAI: an unbound file has no machine, no counter and no heartbeat; the licence's end
+    # date is the only thing that stops it. So it needs one, and the file may not outlive
+    # it. After `super`, which knows whether the file is encrypted -- only then does it
+    # carry the key.
+    if unbound && encrypted?
+      remaining = license.expiry.present? ? (license.expiry - Time.current).to_i : nil
+
+      raise UnboundWithoutExpiryError, 'an unbound licence file needs a licence that has not ended, with at least an hour left' if
+        remaining.nil? || remaining < 1.hour
+
+      @ttl = [ttl&.to_i, remaining].compact.min
+    end
   end
 
   def call
@@ -91,4 +111,9 @@ class LicenseCheckoutService < AbstractCheckoutService
 
   attr_reader :environment,
               :license
+
+  # HBAI: a licence file is sealed under license.key alone, so it stays closed to secrets
+  # unless the file is unbound on purpose -- and even then only when encrypted, since an
+  # unencrypted file is base64 anyone can decode.
+  def checkout_context = encrypted? && @unbound ? :unbound_license_checkout : :checkout
 end
